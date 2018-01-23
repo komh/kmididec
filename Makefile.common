@@ -1,0 +1,238 @@
+#
+#   Common parts of GNU Make/GCC build system
+#   Copyright (C) 2014 by KO Myung-Hun <komh@chollian.net>
+#
+#   This file is part of GNU Make/GCC build system.
+#
+#   This program is free software. It comes without any warranty, to
+#   the extent permitted by applicable law. You can redistribute it
+#   and/or modify it under the terms of the Do What The Fuck You Want
+#   To Public License, Version 2, as published by Sam Hocevar. See
+#   http://www.wtfpl.net/ for more details.
+#
+
+##### Common parts that you don't have to modify
+
+OBJ_EXT     := .o
+LIB_EXT     := .a
+OMF_LIB_EXT := .lib
+EXE_EXT     := .exe
+DLL_EXT     := .dll
+
+.SUFFIXES : .def .exe .dll .a .lib .o .obj .res .c .cpp .h .rc .d $(OBJ_EXT) $(LIB_EXT) $(OMF_LIB_EXT) $(EXE_EXT) $(DLL_EXT)
+
+# set compiler and linker
+CC  := gcc
+CXX := g++
+LD  := g++
+
+# always build with -Zomf
+LDFLAGS += -Zomf
+
+ifneq ($(filter wlink WLINK,$(EMXOMFLD_TYPE)),)
+LDFLAGS += -Zlinker "DISABLE 1121"
+endif
+
+ifdef RELEASE
+# remove symbols
+LDFLAGS  += -s
+# pack the executable and DLLs
+LXLITE   := lxlite /B- /L- /CS
+else
+# enable symbolic debugging
+CFLAGS   += -g
+CXXFLAGS += -g
+LDFLAGS  += -g
+# ignore packing
+LXLITE   := echo ignore packing
+endif
+
+# set archiver
+AR := ar
+
+# default resource compiler is rc
+ifeq ($(strip $(RC)),)
+RC := rc
+endif
+
+# default verbose is quiet, that is V=0
+QUIET_  = @
+QUIET_0 = @
+
+QUIET = $(QUIET_$(V))
+
+# template to build the executable
+define program_template
+$(1)_DEPS := $(foreach s,$($(1)_SRCS),$(s:$(suffix $(s))=.d))
+$$($(1)_DEPS) : CFLAGS += $($(1)_CFLAGS)
+$$($(1)_DEPS) : CXXFLAGS += $($(1)_CXXFLAGS)
+
+$(1)_OBJS := $$($(1)_DEPS:.d=$(OBJ_EXT))
+$$($(1)_OBJS) : CFLAGS += $($(1)_CFLAGS)
+$$($(1)_OBJS) : CXXFLAGS += $($(1)_CXXFLAGS)
+
+$(1)_RES := $$($(1)_RCSRC:.rc=.res)
+
+$(1)$(EXE_EXT) : $$($(1)_OBJS) $$($(1)_RES) $$($(1)_DEF) $$($(1)_EXTRADEPS)
+	$(if $(QUIET), @echo [LD] $$@)
+	$(QUIET)$(LD) $(LDFLAGS) $$($(1)_LDFLAGS) -o $$@ $$($(1)_OBJS) $$($(1)_DEF) $(LDLIBS) $$($(1)_LDLIBS)
+ifneq ($$($(1)_RES),)
+ifeq ($(strip $(NO_COMPRESS_RES)),)
+	$(if $(QUIET), @echo [BIND] $$($(1)_RES) to $$@)
+	$(QUIET)$(RC) $$($(1)_RES) $$@
+endif
+endif
+	$(if $(QUIET), @echo [LXLITE] $$@)
+	$(QUIET)$(LXLITE) $$@
+ifneq ($$($(1)_RES),)
+ifneq ($(strip $(NO_COMPRESS_RES)),)
+	$(if $(QUIET), @echo [BIND] $$($(1)_RES) to $$@)
+	$(QUIET)$(RC) $$($(1)_RES) $$@
+endif
+endif
+
+$(1) : $(1)$(EXE_EXT)
+endef
+
+# template to create a static library
+define lib_template
+$(1)_DEPS := $(foreach s,$($(1)_SRCS),$(s:$(suffix $(s))=.d))
+$$($(1)_DEPS) : CFLAGS += $($(1)_CFLAGS)
+$$($(1)_DEPS) : CXXFLAGS += $($(1)_CXXFLAGS)
+
+$(1)_OBJS := $$($(1)_DEPS:.d=$(OBJ_EXT))
+$$($(1)_OBJS) : CFLAGS += $($(1)_CFLAGS)
+$$($(1)_OBJS) : CXXFLAGS += $($(1)_CXXFLAGS)
+
+$(1)$(LIB_EXT) : $$($(1)_OBJS) $$($(1)_EXTRADEPS)
+	$(if $(QUIET), @echo [AR] $$@)
+	$(QUIET)$(AR) cr$(if $(QUIET),,v) $$@ $$($(1)_OBJS)
+
+$(1)$(OMF_LIB_EXT) : $(1)$(LIB_EXT)
+	$(if $(QUIET), @echo [EMXOMF] $$@)
+	$(QUIET)emxomf -o $$@ $(1)$(LIB_EXT)
+
+$(1) : $(1)$(LIB_EXT) $(1)$(OMF_LIB_EXT)
+endef
+
+# template to build DLL
+define dll_template
+$(1)_DEPS := $(foreach s,$($(1)_SRCS),$(s:$(suffix $(s))=.d))
+$$($(1)_DEPS) : CFLAGS += $($(1)_CFLAGS)
+$$($(1)_DEPS) : CXXFLAGS += $($(1)_CXXFLAGS)
+
+$(1)_OBJS := $$($(1)_DEPS:.d=$(OBJ_EXT))
+$$($(1)_OBJS) : CFLAGS += $($(1)_CFLAGS)
+$$($(1)_OBJS) : CXXFLAGS += $($(1)_CXXFLAGS)
+
+$(1)_RES := $($(1)_RCSRC:.rc=.res)
+
+$(1)_DEF := $(if $($(1)_DEF),$($(1)_DEF),$(1)_auto.def)
+
+$(1)_DLL_TARGET := $(if $($(1)_DLLNAME),$($(1)_DLLNAME),$(1))$(DLL_EXT)
+
+$(1)_auto.def : $$($(1)_OBJS)
+	$(if $(QUIET), @echo [GEN] $$@)
+	$(QUIET)echo LIBRARY $$(notdir $$(basename $$($(1)_DLL_TARGET))) INITINSTANCE TERMINSTANCE > $$@
+	$(QUIET)echo DATA MULTIPLE NONSHARED >> $$@
+ifeq ($(strip $$($(1)_NO_EXPORT)),)
+	$(QUIET)echo EXPORTS >> $$@
+	$(QUIET)emxexp $$($(1)_OBJS) | sed /_DLL_InitTerm/d >> $$@
+endif
+
+$$($(1)_DLL_TARGET) : $$($(1)_OBJS) $$($(1)_RES) $$($(1)_DEF) $$($(1)_EXTRADEPS)
+	$(if $(QUIET), @echo [LD] $$@)
+	$(QUIET)$(LD) -Zdll $(LDFLAGS) $$($(1)_LDFLAGS) -o $$@ $$($(1)_OBJS) $$($(1)_DEF) $(LDLIBS) $$($(1)_LDLIBS)
+ifneq ($$($(1)_RES),)
+ifeq ($(strip $(NO_COMPRESS_RES)),)
+	$(if $(QUIET), @echo [BIND] $$($(1)_RES) to $$@)
+	$(QUIET)$(RC) $$($(1)_RES) $$@
+endif
+endif
+	$(if $(QUIET), @echo [LXLITE] $$@)
+	$(QUIET)$(LXLITE) $$@
+ifneq ($$($(1)_RES),)
+ifneq ($(strip $(NO_COMPRESS_RES)),)
+	$(if $(QUIET), @echo [BIND] $$($(1)_RES) to $$@)
+	$(QUIET)$(RC) $$($(1)_RES) $$@
+endif
+endif
+
+$(1)_dll$(LIB_EXT) : $$($(1)_DLL_TARGET)
+	$(if $(QUIET), @echo [IMPLIB] $$@)
+	$(QUIET)emximp -o $$@ $$($(1)_DLL_TARGET)
+
+$(1)_dll$(OMF_LIB_EXT) : $$($(1)_DLL_TARGET)
+	$(if $(QUIET), @echo [IMPLIB] $$@)
+	$(QUIET)emximp -o $$@ $$($(1)_DLL_TARGET)
+
+$(1) : $(1)_dll$(LIB_EXT) $(1)_dll$(OMF_LIB_EXT)
+endef
+
+%.d : %.c
+	$(if $(QUIET), @echo [DEP] $@)
+	$(QUIET)$(CC) $(CFLAGS) -MM -MP -MT "$(@:.d=$(OBJ_EXT)) $@" -MF $@ $<
+
+%.d : %.cpp
+	$(if $(QUIET), @echo [DEP] $@)
+	$(QUIET)$(CXX) $(CXXFLAGS) -MM -MP -MT "$(@:.d=$(OBJ_EXT)) $@" -MF $@ $<
+
+%.o : %.c
+	$(if $(QUIET), @echo [CC] $@)
+	$(QUIET)$(CC) $(CFLAGS) -c -o $@ $<
+
+%.obj : %.c
+	$(if $(QUIET), @echo [CC] $@)
+	$(QUIET)$(CC) -Zomf $(CFLAGS) -c -o $@ $<
+
+%.o : %.cpp
+	$(if $(QUIET), @echo [CXX] $@)
+	$(QUIET)$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+%.obj : %.cpp
+	$(if $(QUIET), @echo [CXX] $@)
+	$(QUIET)$(CXX) -Zomf $(CXXFLAGS) -c -o $@ $<
+
+%.res : %.rc
+	$(if $(QUIET), @echo [RC] $@)
+	$(QUIET)$(RC) $(RCFLAGS) -r $< $@
+
+.PHONY : all $(BIN_PROGRAMS) $(BIN_LIBRARIES) clean $(SUBDIRS)
+
+all : $(SUBDIRS) $(BIN_PROGRAMS) $(BIN_LIBRARIES)
+
+# check if both library_LIB and library_DLL is not set
+$(foreach lib,$(BIN_LIBRARIES),$(if $(strip $($(lib)_LIB)$($(lib)_DLL)),,$(error Either of $(lib)_LIB or $(lib)_DLL SHOULD be SET)))
+
+LIB_ENABLED = $(foreach lib,$(1),$(if $($(lib)_LIB),$(lib)))
+DLL_ENABLED = $(foreach dll,$(1),$(if $($(dll)_DLL),$(dll)))
+
+$(foreach prog,$(BIN_PROGRAMS),$(eval $(call program_template,$(prog))))
+$(foreach lib,$(call LIB_ENABLED,$(BIN_LIBRARIES)),$(eval $(call lib_template,$(lib))))
+$(foreach dll,$(call DLL_ENABLED,$(BIN_LIBRARIES)),$(eval $(call dll_template,$(dll))))
+
+clean : $(SUBDIRS)
+	rm -f $(foreach prog,$(BIN_PROGRAMS),$($(prog)_DEPS:.d=.bak))
+	rm -f $(foreach prog,$(BIN_PROGRAMS),$($(prog)_DEPS))
+	rm -f $(foreach prog,$(BIN_PROGRAMS),$($(prog)_OBJS))
+	rm -f $(foreach prog,$(BIN_PROGRAMS),$($(prog)_RES))
+	rm -f $(foreach prog,$(BIN_PROGRAMS),$(addsuffix $(EXE_EXT),$(prog)))
+	rm -f $(foreach lib,$(BIN_LIBRARIES),$($(lib)_DEPS:.d=.bak))
+	rm -f $(foreach lib,$(BIN_LIBRARIES),$($(lib)_DEPS))
+	rm -f $(foreach lib,$(BIN_LIBRARIES),$($(lib)_OBJS))
+	rm -f $(foreach lib,$(BIN_LIBRARIES),$(addsuffix $(LIB_EXT),$(lib)))
+	rm -f $(foreach lib,$(BIN_LIBRARIES),$(addsuffix $(OMF_LIB_EXT),$(lib)))
+	rm -f $(foreach lib,$(BIN_LIBRARIES),$($(lib)_RES))
+	rm -f $(foreach lib,$(BIN_LIBRARIES),$(lib)_auto.def)
+	rm -f $(foreach lib,$(BIN_LIBRARIES),$(addsuffix _dll$(LIB_EXT),$(lib)))
+	rm -f $(foreach lib,$(BIN_LIBRARIES),$(addsuffix _dll$(OMF_LIB_EXT),$(lib)))
+	rm -f $(foreach lib,$(BIN_LIBRARIES),$($(lib)_DLL_TARGET))
+	rm -f $(CLEAN-FILES)
+
+$(SUBDIRS) :
+	$(MAKE) -C $@ RELEASE=$(RELEASE) $(MAKECMDGOALS)
+
+ifeq ($(filter %clean, $(MAKECMDGOALS)),)
+-include $(foreach prog,$(BIN_PROGRAMS),$($(prog)_DEPS))
+-include $(foreach lib,$(BIN_LIBRARIES),$($(lib)_DEPS))
+endif
