@@ -80,7 +80,7 @@ BIN_PROGRAMS := kmidi
 
 kmidi_SRCS      := kmidi.c
 kmidi_LDLIBS    := -lkmididec -lkai
-kmidi_EXTRADEPS := kmididec
+kmidi_EXTRADEPS := kmididec_dll.a
 
 # Variables for libraries
 #
