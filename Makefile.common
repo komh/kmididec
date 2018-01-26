@@ -199,7 +199,7 @@ endef
 
 .PHONY : all $(BIN_PROGRAMS) $(BIN_LIBRARIES) clean $(SUBDIRS)
 
-all : $(SUBDIRS) $(BIN_PROGRAMS) $(BIN_LIBRARIES)
+all : $(SUBDIRS) $(BIN_LIBRARIES) $(BIN_PROGRAMS)
 
 # check if both library_LIB and library_DLL is not set
 $(foreach lib,$(BIN_LIBRARIES),$(if $(strip $($(lib)_LIB)$($(lib)_DLL)),,$(error Either of $(lib)_LIB or $(lib)_DLL SHOULD be SET)))
