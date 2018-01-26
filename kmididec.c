@@ -767,7 +767,7 @@ int kmdecSeek( PKMDEC dec, int offset, int origin )
     else if( clock > dec->duration )
         clock = dec->duration;
 
-    if( clock < dec->clock );
+    if( clock < dec->clock )
         reset( dec );
 
     while( dec->clock < clock && decode( dec, DECODE_SEEK ) != -1 )
