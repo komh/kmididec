@@ -1,0 +1,49 @@
+K MIDI DECoder
+--------------
+
+kmididec is a library in order to decode MIDI to PCM using fluidsynth.
+
+kmididec has the following features:
+
+  * decoding of SMF0 and SMF1 midi file
+  * getting total duration of midi file and a current playing posision in
+    milli-seconds
+  * seeking in milli-seconds
+
+kmididec does NOT support the following features:
+
+  * decoding of SMF2 midi file
+  * division in SMTPE format
+  * midi chunk in RIFF file
+
+K MIDI
+------
+
+kmidi is a simple MIDI player using kmididec.
+
+kmidi has the following features:
+
+  * play and stop
+  * pause and resume
+  * seek back and forth in 5 seconds
+
+History
+-------
+
+  * v0.1.0 ( 2018/01/28 )
+    - Initial release
+
+Contact
+-------
+
+    https://github.com/komh/kmididec/issues
+
+Donation
+--------
+
+If you are satisfied with this program and want to donate to me, please visit
+the following URL.
+
+    http://www.os2.kr/komh/os2factory/
+
+KO Myung-Hun
