@@ -1,0 +1,28 @@
+                          Upload Information Template for Hobbes.nmsu.edu
+                          ===============================================
+
+        Archive Filename: kmididec@SHORT_VER@.zip
+       Short Description: kmididec v@VER@
+        Long Description: kmididec v@VER@
+K MIDI DECoder is kmididec is a library in order to decode MIDI to PCM using
+fluidsynth.
+
+K MIDI is a simple MIDI player using kmididec.
+
+      Proposed directory
+           for placement: /pub/os2/dev/mm
+
+               Your name: KO Myung-Hun
+           Email address: komh@chollian.net
+    Program contact name: (same)
+   Program contact email: (same)
+             Program URL: https://github.com/komh/kmididec
+
+      Would you like the
+   contact email address
+    included in listings? yes
+
+Operating System/Version:
+ Additional requirements: kLIBC v0.6.6, libkai v1.2.0, fluidsynth v1.0.9+
+
+                Replaces: (none)
