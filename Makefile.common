@@ -131,9 +131,21 @@ $(1)_DEF := $(if $($(1)_DEF),$($(1)_DEF),$(1)_auto.def)
 
 $(1)_DLL_TARGET := $(if $($(1)_DLLNAME),$($(1)_DLLNAME),$(1))$(DLL_EXT)
 
-$(1)_auto.def : $$($(1)_OBJS)
+$(1)_DLL_LIBNAME := $$(notdir $$(basename $$($(1)_DLL_TARGET)))
+
+ifneq ($$(wildcard $(1)_auto.def),)
+ifneq ($$(shell sed -n -e "1s/^LIBRARY[ \t]\+\([^ \t]\+\).*$$$$/\1/p" $$($(1)_DEF)),$$($(1)_DLL_LIBNAME))
+$$(shell touch $(1)_auto.libname)
+endif
+endif
+
+$(1)_auto.libname :
+	$(if $(QUIET), @echo [TOUCH] $$@)
+	$(QUIET)touch $$@
+
+$(1)_auto.def : $$($(1)_OBJS) $(1)_auto.libname
 	$(if $(QUIET), @echo [GEN] $$@)
-	$(QUIET)echo LIBRARY $$(notdir $$(basename $$($(1)_DLL_TARGET))) INITINSTANCE TERMINSTANCE > $$@
+	$(QUIET)echo LIBRARY $$($(1)_DLL_LIBNAME) INITINSTANCE TERMINSTANCE > $$@
 	$(QUIET)echo DATA MULTIPLE NONSHARED >> $$@
 ifeq ($(strip $$($(1)_NO_EXPORT)),)
 	$(QUIET)echo EXPORTS >> $$@
@@ -224,6 +236,7 @@ clean : $(SUBDIRS)
 	rm -f $(foreach lib,$(BIN_LIBRARIES),$(addsuffix $(OMF_LIB_EXT),$(lib)))
 	rm -f $(foreach lib,$(BIN_LIBRARIES),$($(lib)_RES))
 	rm -f $(foreach lib,$(BIN_LIBRARIES),$(lib)_auto.def)
+	rm -f $(foreach lib,$(BIN_LIBRARIES),$(lib)_auto.libname)
 	rm -f $(foreach lib,$(BIN_LIBRARIES),$(addsuffix _dll$(LIB_EXT),$(lib)))
 	rm -f $(foreach lib,$(BIN_LIBRARIES),$(addsuffix _dll$(OMF_LIB_EXT),$(lib)))
 	rm -f $(foreach lib,$(BIN_LIBRARIES),$($(lib)_DLL_TARGET))
