@@ -29,6 +29,9 @@
 extern "C" {
 #endif
 
+/* KMIDIDEC version macro */
+#define KMIDIDEC_VERSION    "0.1.0"
+
 /**
  * @defgroup kmdecseekmodes Seek modes
  * {
