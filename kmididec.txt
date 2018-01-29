@@ -4,7 +4,7 @@
         Archive Filename: kmididec@SHORT_VER@.zip
        Short Description: kmididec v@VER@
         Long Description: kmididec v@VER@
-K MIDI DECoder is kmididec is a library in order to decode MIDI to PCM using
+K MIDI DECoder(kmididec) is a library in order to decode MIDI to PCM using
 fluidsynth.
 
 K MIDI is a simple MIDI player using kmididec.
