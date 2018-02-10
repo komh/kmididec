@@ -33,6 +33,14 @@ extern "C" {
 #define KMIDIDEC_VERSION    "0.1.0"
 
 /**
+ * @defgroup kmdecbps BPS
+ * {
+ */
+#define KMDEC_BPS_S16   16
+#define KMDEC_BPS_FLOAT 32
+/** @} */
+
+/**
  * @defgroup kmdecseekmodes Seek modes
  * {
  */

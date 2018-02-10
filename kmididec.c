@@ -84,6 +84,10 @@ typedef struct kmdec
     fluid_synth_t *synth;       /**< synthesizer of fluidsynth */
     int sf;                     /**< sound font file */
 
+    /** synthesize in float or in s16 */
+    FLUIDSYNTH_API int ( *synth_write )( fluid_synth_t *, int,
+                                         void *, int, int, void *, int, int );
+
     int clockUnit;  /**< us/MIDI clock */
 
     int sampleRate; /**< sample rate */
@@ -536,9 +540,8 @@ static int decode( PKMDEC dec, int mode )
 
         if( samples > 0 && mode == DECODE_PLAY )
         {
-            fluid_synth_write_s16( dec->synth, samples,
-                                   dec->buffer, 0, 2,
-                                   dec->buffer, 1, 2 );
+            dec->synth_write( dec->synth, samples,
+                              dec->buffer, 0, 2, dec->buffer, 1, 2 );
         }
 
         dec->bufLen = samples * dec->sampleSize;
@@ -592,12 +595,22 @@ PKMDEC kmdecOpen( const char *name, const char *sf2name,
     if( dec->sf == -1 )
         goto fail;
 
-    /* support only 16bits */
-    if( pkai->bps != 16 )
+    char *sampleFormat;
+    if( pkai->bps == KMDEC_BPS_S16 )
+    {
+        sampleFormat = "16bits";
+        dec->synth_write = fluid_synth_write_s16;
+    }
+    else if( pkai->bps == KMDEC_BPS_FLOAT )
+    {
+        sampleFormat = "float";
+        dec->synth_write = fluid_synth_write_float;
+    }
+    else
         goto fail;
 
     if( !fluid_settings_setstr( dec->settings, "audio.sample-format",
-                                               "16bits")
+                                               sampleFormat )
         || !fluid_settings_setint( dec->settings, "synth.audio-channels",
                                    pkai->channels >> 1 )
         || !fluid_settings_setnum( dec->settings, "synth.sample-rate",

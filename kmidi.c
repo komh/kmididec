@@ -38,11 +38,20 @@
 #define SAMPLES 2048
 #define SAMPLE_SIZE ( 2/* 16bits */ * 2/* 2 CH */ )
 
+#define USE_FLOAT 1
+
 /* callback for KAI */
 static ULONG APIENTRY kaiCallback( PVOID pCBData,
                                    PVOID pBuffer, ULONG ulBufferSize )
 {
+#if USE_FLOAT
+    float buf[ ulBufferSize / sizeof( short )];
+
+    return kaiFloatToS16( pBuffer, buf,
+                          kmdecDecode( pCBData, buf, sizeof( buf )));
+#else
     return kmdecDecode( pCBData, pBuffer, ulBufferSize );
+#endif
 }
 
 /* convert ms to time */
@@ -73,7 +82,11 @@ int main( int argc, char *argv[])
     PKMDEC dec;
     KMDECAUDIOINFO audioInfo =
     {
-        .bps = 16,
+#if USE_FLOAT
+        .bps = KMDEC_BPS_FLOAT,
+#else
+        .bps = KMDEC_BPS_S16,
+#endif
         .channels = 2,
         .sampleRate = SAMPLE_RATE
     };
@@ -107,7 +120,7 @@ int main( int argc, char *argv[])
 
     ksWanted.usDeviceIndex      = 0;
     ksWanted.ulType             = KAIT_PLAY;
-    ksWanted.ulBitsPerSample    = audioInfo.bps;
+    ksWanted.ulBitsPerSample    = BPS_16;
     ksWanted.ulSamplingRate     = audioInfo.sampleRate;
     ksWanted.ulDataFormat       = 0;
     ksWanted.ulChannels         = audioInfo.channels;
