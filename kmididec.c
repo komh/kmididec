@@ -552,7 +552,6 @@ static int decode( PKMDEC dec, int mode )
 
         /* accumulate clocks */
         dec->clock += CLOCK_BASE * delta / ticksPerSec;
-        return dec->bufLen;
     }
 
     return 0;
