@@ -1,1 +1,5 @@
+# auto detect 'text' mode and use global setting of 'eol'
+* text=auto !eol
+
+# EOL of REXX .cmd should be CR+LF
 *.cmd eol=crlf
