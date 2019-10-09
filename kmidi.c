@@ -47,8 +47,8 @@ static ULONG APIENTRY kaiCallback( PVOID pCBData,
 #if USE_FLOAT
     float buf[ ulBufferSize / sizeof( short )];
 
-    return kaiFloatToS16( pBuffer, buf,
-                          kmdecDecode( pCBData, buf, sizeof( buf )));
+    return kaiFloatToS16( pBuffer, ulBufferSize,
+                          buf, kmdecDecode( pCBData, buf, sizeof( buf )));
 #else
     return kmdecDecode( pCBData, pBuffer, ulBufferSize );
 #endif
