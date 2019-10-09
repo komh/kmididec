@@ -681,7 +681,7 @@ void kmdecClose( PKMDEC dec )
  *
  * @param[in] dec Pointer to a deocder
  * @param[out] buffer where to store the decoded messages
- * @param[in] size Size of buffer
+ * @param[in] size Size of buffer in bytes
  * @return Size filled in buffer in bytes
  */
 int kmdecDecode( PKMDEC dec, void *buffer, int size )
