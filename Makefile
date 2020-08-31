@@ -76,11 +76,16 @@ NO_COMPRESS_RES :=
 #   program_DEF         for .def file
 #   program_EXTRADEPS   for extra dependencies
 
-BIN_PROGRAMS := kmidi
+BIN_PROGRAMS := kmidi kmidimmio
 
 kmidi_SRCS      := kmidi.c
 kmidi_LDLIBS    := -lkmididec -lkai
 kmidi_EXTRADEPS := kmididec_dll.a
+
+kmidimmio_SRCS      := kmidimmio.c
+kmidimmio_LDFLAGS   := -Zomf
+kmidimmio_LDLIBS    := -lkmididec -lkai -lmmpm2
+kmidimmio_EXTRADEPS := kmididec_dll.a
 
 # Variables for libraries
 #
