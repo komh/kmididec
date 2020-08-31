@@ -62,16 +62,61 @@ typedef struct kmdecaudioinfo
 typedef struct kmdec *PKMDEC;
 
 /**
- * Open decoder
+ * IO functions
+ */
+typedef struct kmdeciofuncs
+{
+    int ( *open )( const char * );        /**< open for reading in binary */
+    int ( *read )( int, void *, size_t ); /**< read from a file */
+    int ( *seek )( int, long, int);       /**< seek */
+    int ( *tell )( int );                 /**< tell */
+    int ( *close )( int );                /**< close */
+} KMDECIOFUNCS, *PKMDECIOFUNCS;
+
+/**
+ * Open decoder with a file name
  *
  * @param[in] name File name to open
  * @param[in] sf2name Sound font file to open
  * @param[in] pkai Pointer to audio information
- * @return 0 on success, -1 on error
- * @remark Support only 16bits sample
+ * @return Decoder on success, NULL on error
  */
 PKMDEC kmdecOpen( const char *name, const char *sf2name,
                   PKMDECAUDIOINFO pkai );
+
+/**
+ * Open decoder with a file name
+ *
+ * @param[in] name File name to open
+ * @param[in] sf2name Sound font file to open
+ * @param[in] pkai Pointer to audio information
+ * @param[in] io Pointer to IO functions. If NULL, file IOs is used
+ * @return Decoder on success, NULL on error
+ */
+PKMDEC kmdecOpenEx( const char *name, const char *sf2name,
+                  PKMDECAUDIOINFO pkai, PKMDECIOFUNCS io );
+
+/**
+ * Open decoder with a file descriptor
+ *
+ * @param[in] name File name to open
+ * @param[in] sf2name Sound font file to open
+ * @param[in] pkai Pointer to audio information
+ * @return Decoder on success, NULL on error
+ */
+PKMDEC kmdecOpenFd( int fd, const char *sf2name, PKMDECAUDIOINFO pkai );
+
+/**
+ * Open decoder with a file descriptor
+ *
+ * @param[in] name File name to open
+ * @param[in] sf2name Sound font file to open
+ * @param[in] pkai Pointer to audio information
+ * @param[in] io Pointer to IO functions. If NULL, file IOs is used
+ * @return Decoder on success, NULL on error
+ */
+PKMDEC kmdecOpenFdEx( int fd, const char *sf2name, PKMDECAUDIOINFO pkai,
+                      PKMDECIOFUNCS io );
 
 /**
  * Close decoder

@@ -25,9 +25,11 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#include <stdbool.h>
 #include <sys/param.h>
 #include <io.h>
 #include <fcntl.h>
+#include <errno.h>
 
 #include <fluidsynth.h>
 /* missed API declaration in 1.0.9 */
@@ -75,7 +77,9 @@ typedef struct kmtrk
  */
 typedef struct kmdec
 {
-    int fd; /**< fd for MIDI file */
+    int fd;             /**< fd for MIDI file */
+    bool closeFd;       /**< flag to indicate to close fd */
+    PKMDECIOFUNCS io;   /**< IO functions */
 
     KMTHD header;   /**< header */
     PKMTRK tracks;  /**< array of a track */
@@ -132,7 +136,7 @@ static int initMidiInfo( PKMDEC dec )
     PKMTRK *tracks = &dec->tracks;
     uint8_t data[ 14 ];
 
-    if( read( fd, data, sizeof( data )) == -1 )
+    if( dec->io->read( fd, data, sizeof( data )) == -1 )
         return -1;
 
     if( memcmp( data, "MThd\x00\x00\x00\x06", 8 ) != 0 )
@@ -153,7 +157,8 @@ static int initMidiInfo( PKMDEC dec )
     for( int i = 0; i < header->tracks; i++ )
     {
         PKMTRK track = ( *tracks ) + i;
-        if( read( fd, data, 8 ) == -1 || memcmp( data, "MTrk", 4 ) != 0 )
+        if( dec->io->read( fd, data, 8 ) == -1
+            || memcmp( data, "MTrk", 4 ) != 0 )
         {
 fail:
             free( *tracks );
@@ -163,12 +168,12 @@ fail:
         }
 
         track->dec = dec;
-        track->start = tell( fd );
+        track->start = dec->io->tell( fd );
         track->length = ntohl( *( long * )( data + 4 ));
         if( decodeDelta( track ) == -1 )
             goto fail;
 
-        if( lseek( fd, track->start + track->length, SEEK_SET ) == -1 )
+        if( dec->io->seek( fd, track->start + track->length, SEEK_SET ) == -1 )
             goto fail;
     }
 
@@ -190,7 +195,7 @@ static int reset( PKMDEC dec )
 
         track->offset = 0;
         track->nextTick = 0;
-        if( lseek( dec->fd, track->start, SEEK_SET ) == -1 ||
+        if( dec->io->seek( dec->fd, track->start, SEEK_SET ) == -1 ||
             decodeDelta( track ) == -1 )
             return -1;
         track->status = 0;
@@ -230,7 +235,7 @@ static int readVarQ( PKMTRK track, int *val )
 
     do
     {
-        if( count >= 4 || read( fd, &b, 1 ) == -1 )
+        if( count >= 4 || track->dec->io->read( fd, &b, 1 ) == -1 )
             return -1;
         count++;
         track->offset++;
@@ -284,7 +289,7 @@ static int decodeMetaEvent( PKMTRK track )
         return 0;
 
     /* type */
-    if( read( fd, &type, 1 ) == -1 )
+    if( track->dec->io->read( fd, &type, 1 ) == -1 )
         return -1;
     track->offset++;
 
@@ -295,7 +300,7 @@ static int decodeMetaEvent( PKMTRK track )
     uint8_t data[ len + 1 ];
     data[ len ] = '\0';
 
-    if( read( fd, data, len ) == -1 )
+    if( track->dec->io->read( fd, data, len ) == -1 )
         return -1;
     track->offset += len;
 
@@ -391,10 +396,11 @@ static int decodeEvent( PKMTRK track )
     if( track->offset >= track->length )
         return 0;
 
-    if( lseek( fd, track->start + track->offset, SEEK_SET ) == -1 )
+    if( track->dec->io->seek( fd, track->start + track->offset,
+                              SEEK_SET ) == -1 )
         return -1;
 
-    if( read( fd, &status, 1 ) == -1 )
+    if( track->dec->io->read( fd, &status, 1 ) == -1 )
         return -1;
     track->offset++;
 
@@ -402,7 +408,7 @@ static int decodeEvent( PKMTRK track )
     if( status < 0x80 )
     {
         status = track->status;
-        if( lseek( fd, -1, SEEK_CUR ) == -1 )
+        if( track->dec->io->seek( fd, -1, KMDEC_SEEK_CUR ) == -1 )
             return -1;
         track->offset--;
     }
@@ -446,7 +452,7 @@ static int decodeEvent( PKMTRK track )
 
     uint8_t data[ len ];
 
-    if( read( fd, data, len ) == -1 )
+    if( track->dec->io->read( fd, data, len ) == -1 )
         return -1;
     track->offset += len;
 
@@ -557,19 +563,64 @@ static int decode( PKMDEC dec, int mode )
     return 0;
 }
 
+static int defaultOpen( const char *name )
+{
+    return open( name, O_RDONLY | O_BINARY );
+}
+
+static int defaultRead( int fd, void *buf, size_t n )
+{
+    return read( fd, buf, n );
+}
+
+static int defaultSeek( int fd, long offset, int origin )
+{
+    static int origins[] = { SEEK_SET, SEEK_CUR, SEEK_END };
+
+    if( origin >= sizeof( origins ) / sizeof( origins[ 0 ]))
+    {
+        errno = EINVAL;
+        return -1;
+    }
+
+    return lseek( fd, offset, origins[ origin ]);
+}
+
+static int defaultTell( int fd )
+{
+    return tell( fd );
+}
+
+static int defaultClose( int fd )
+{
+    return close( fd );
+}
+
 /**
  * Open decoder
  *
- * @param[in] name File name to open
+ * @param[in] fd File descriptor of a midi file
  * @param[in] sf2name Sound font file to open
  * @param[in] pkai Pointer to audio information
- * @return 0 on success, -1 on error
- * @remark Support only 16bits sample
+ * @param[in] closeFd Flag to indicate to close fd
+ * @param[in] io IO functions to use
+ * @return Decoder on success, NULL on error
  */
-PKMDEC kmdecOpen( const char *name, const char *sf2name,
-                  PKMDECAUDIOINFO pkai )
+PKMDEC openEx( int fd, const char *sf2name, PKMDECAUDIOINFO pkai,
+               bool closeFd, PKMDECIOFUNCS io)
 {
+    static KMDECIOFUNCS defaultIO = {
+        .open = defaultOpen,
+        .read = defaultRead,
+        .seek = defaultSeek,
+        .tell = defaultTell,
+        .close = defaultClose,
+    };
+
     PKMDEC dec;
+
+    if( !io )
+        io = &defaultIO;
 
     dec = calloc( 1, sizeof( *dec ));
     if( !dec )
@@ -578,8 +629,12 @@ PKMDEC kmdecOpen( const char *name, const char *sf2name,
     /* init `sf' first in order to call kmdecClose() on failure */
     dec->sf = -1;
 
-    dec->fd = open( name, O_RDONLY | O_BINARY );
-    if( dec->fd == -1 || initMidiInfo( dec ) == -1 )
+    dec->fd = fd;
+    dec->closeFd = closeFd;
+
+    dec->io = io;
+
+    if( initMidiInfo( dec ) == -1 )
         goto fail;
 
     dec->settings = new_fluid_settings();
@@ -653,6 +708,72 @@ fail:
 }
 
 /**
+ * Open decoder with a file name
+ *
+ * @param[in] name File name to open
+ * @param[in] sf2name Sound font file to open
+ * @param[in] pkai Pointer to audio information
+ * @return Decoder on success, NULL on error
+ */
+PKMDEC kmdecOpen( const char *name, const char *sf2name, PKMDECAUDIOINFO pkai )
+{
+    return kmdecOpenEx( name, sf2name, pkai, NULL );
+}
+
+/**
+ * Open decoder with a file name
+ *
+ * @param[in] name File name to open
+ * @param[in] sf2name Sound font file to open
+ * @param[in] pkai Pointer to audio information
+ * @param[in] io Pointer to IO functions. If NULL, file IOs is used
+ * @return Decoder on success, NULL on error
+ */
+PKMDEC kmdecOpenEx( const char *name, const char *sf2name,
+                    PKMDECAUDIOINFO pkai, PKMDECIOFUNCS io )
+{
+    int fd;
+
+    if( io )
+        fd = io->open( name );
+    else
+        fd = defaultOpen( name );
+
+    if( fd == -1)
+        return NULL;
+
+    return openEx( fd, sf2name, pkai, true, io );
+}
+
+/**
+ * Open decoder with a file descriptor
+ *
+ * @param[in] fd File descriptor of a midi file
+ * @param[in] sf2name Sound font file to open
+ * @param[in] pkai Pointer to audio information
+ * @return Decoder on success, NULL on error
+ */
+PKMDEC kmdecOpenFd( int fd, const char *sf2name, PKMDECAUDIOINFO pkai )
+{
+    return kmdecOpenFdEx( fd, sf2name, pkai, NULL );
+}
+
+/**
+ * Open decoder with a file descriptor
+ *
+ * @param[in] fd File descriptor of a midi file
+ * @param[in] sf2name Sound font file to open
+ * @param[in] pkai Pointer to audio information
+ * @param[in] io Pointer to IO functions. If NULL, file IOs is used
+ * @return Decoder on success, NULL on error
+ */
+PKMDEC kmdecOpenFdEx( int fd, const char *sf2name,
+                    PKMDECAUDIOINFO pkai, PKMDECIOFUNCS io )
+{
+    return openEx( fd, sf2name, pkai, false, io );
+}
+
+/**
  * Close decoder
  *
  * @param[in] dec Pointer to a deocder
@@ -671,7 +792,8 @@ void kmdecClose( PKMDEC dec )
     delete_fluid_settings( dec->settings );
 
     free( dec->tracks );
-    close( dec->fd );
+    if( dec->closeFd )
+        dec->io->close( dec->fd );
 
     free( dec );
 }
