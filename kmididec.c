@@ -756,15 +756,15 @@ int kmdecSeek( PKMDEC dec, int offset, int origin )
 
     switch( origin )
     {
-        case SEEK_SET:
+        case KMDEC_SEEK_SET:
             originClock = 0;
             break;
 
-        case SEEK_CUR:
+        case KMDEC_SEEK_CUR:
             originClock = dec->clock;
             break;
 
-        case SEEK_END:
+        case KMDEC_SEEK_END:
             originClock = dec->duration;
             break;
 
