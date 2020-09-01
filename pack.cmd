@@ -11,6 +11,7 @@ sVerMacro = 'KMIDIDEC_VERSION'
 sVerHeader = 'kmididec.h'
 
 sDistFiles = 'kmidi.exe' '/',
+             'kmidimmio.exe' '/',
              'README' '/',
              'kmididec.h' '/include',
              'kmidide0.dll' '/lib',
