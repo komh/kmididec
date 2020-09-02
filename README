@@ -9,6 +9,7 @@ kmididec has the following features:
   * getting total duration of midi file and a current playing posision in
     milli-seconds
   * seeking in milli-seconds
+  * using user-supplied-IO functions
 
 kmididec does NOT support the following features:
 
@@ -16,8 +17,8 @@ kmididec does NOT support the following features:
   * division in SMTPE format
   * midi chunk in RIFF file
 
-K MIDI
-------
+K MIDI and K MIDI MMIO
+----------------------
 
 kmidi is a simple MIDI player using kmididec.
 
@@ -27,8 +28,15 @@ kmidi has the following features:
   * pause and resume
   * seek back and forth in 5 seconds
 
+kmidimmio is the same as kmidi, but it is a version using MMIO.
+
 History
 -------
+
+  * v0.2.0 ( 2020/09/02 )
+    - Added: Decode in float audio samples
+    - Added: Allow user-supplied-IO functions
+    - Fixed: typos and misc.
 
   * v0.1.0 ( 2018/01/28 )
     - Initial release

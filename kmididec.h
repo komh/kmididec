@@ -30,7 +30,7 @@ extern "C" {
 #endif
 
 /* KMIDIDEC version macro */
-#define KMIDIDEC_VERSION    "0.1.0"
+#define KMIDIDEC_VERSION    "0.2.0"
 
 /**
  * @defgroup kmdecbps BPS
