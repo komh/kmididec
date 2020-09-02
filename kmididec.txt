@@ -23,6 +23,6 @@ K MIDI is a simple MIDI player using kmididec.
     included in listings? yes
 
 Operating System/Version:
- Additional requirements: kLIBC v0.6.6, libkai v1.2.0, fluidsynth v1.0.9+
+ Additional requirements: kLIBC v0.6.6, libkai v1.3.1, fluidsynth v1.0.9+
 
                 Replaces: (none)
