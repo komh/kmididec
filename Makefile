@@ -49,6 +49,19 @@ RCFLAGS :=
 # set if you want not to compress resources
 NO_COMPRESS_RES :=
 
+# specify BLDLEVEL VENDOR string
+BLDLEVEL_VENDOR := OS/2 Factory
+
+# specify a macro defining version, and a file including that macro
+# to generate BLDLEVEL version string
+BLDLEVEL_VERSION_MACRO := KMIDIDEC_VERSION
+BLDLEVEL_VERSION_FILE := kmididec.h
+
+# specify BLDLEVEL VERSION string if you want to set VERSION string manually,
+# default is generated with BLDLEVEL_VERSION_MACRO and BLDLEVEL_VERSION_FILE
+# if unset
+BLDLEVEL_VERSION :=
+
 # Variables for programs
 #
 # 1. specify a list of programs without an extension with
@@ -75,17 +88,20 @@ NO_COMPRESS_RES :=
 #   program_RCFLAGS     for rc flags
 #   program_DEF         for .def file
 #   program_EXTRADEPS   for extra dependencies
+#   program_DESC        for a BLDLEVEL description string
 
 BIN_PROGRAMS := kmidi kmidimmio
 
 kmidi_SRCS      := kmidi.c
 kmidi_LDLIBS    := -lkmididec -lkai
 kmidi_EXTRADEPS := kmididec_dll.a
+kmidi_DESC      := K MIDI
 
 kmidimmio_SRCS      := kmidimmio.c
 kmidimmio_LDFLAGS   := -Zomf
 kmidimmio_LDLIBS    := -lkmididec -lkai -lmmpm2
 kmidimmio_EXTRADEPS := kmididec_dll.a
+kmidimmio_DESC      := K MIDI MMIO
 
 # Variables for libraries
 #
@@ -125,6 +141,7 @@ kmidimmio_EXTRADEPS := kmididec_dll.a
 #   library_DEF         for .def file, if not set all the symbols are exported
 #   library_NO_EXPORT   if set, no symbols are exported in .def file
 #   library_EXTRADEPS   for extra dependencies
+#   library_DESC        for a BLDLEVEL description string
 #
 # the above is only for DLL
 
@@ -135,6 +152,7 @@ kmididec_LIB := yes
 kmididec_DLL := yes
 kmididec_DLLNAME := kmidide0
 kmididec_LDLIBS := -lfluidsynth
+kmididec_DESC := K MIDI DECoder
 
 include Makefile.common
 

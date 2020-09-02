@@ -55,6 +55,18 @@ ifeq ($(strip $(RC)),)
 RC := rc
 endif
 
+# BLDLEVEL string
+BLDLEVEL_DATE := $(shell LANG=C date +"\" %F %T %^Z  \"")
+BLDLEVEL_HOST = $(shell echo $(HOSTNAME) | cut -b -11)
+
+ifeq ($(strip $(BLDLEVEL_VERSION)),)
+ifneq ($(strip $(BLDLEVEL_VERSION_FILE)),)
+BLDLEVEL_VERSION := $(shell sed -n -e "s/^[ \t]*\#[ \t]*define[ \t]\+$(BLDLEVEL_VERSION_MACRO)[ \t]\+\"\(.*\)\"/\1/p" $(BLDLEVEL_VERSION_FILE))
+endif
+endif
+
+BLDLEVEL := @\#$(BLDLEVEL_VENDOR):$(BLDLEVEL_VERSION)\#@\#\#1\#\#$(BLDLEVEL_DATE)$(BLDLEVEL_HOST)::::::@@
+
 # default verbose is quiet, that is V=0
 QUIET_  = @
 QUIET_0 = @
@@ -73,6 +85,8 @@ $$($(1)_OBJS) : CXXFLAGS += $($(1)_CXXFLAGS)
 
 $(1)_RES := $$($(1)_RCSRC:.rc=.res)
 
+$(1)_DESC := $(if $($(1)_DESC),$($(1)_DESC),$(1))
+
 $(1)$(EXE_EXT) : $$($(1)_OBJS) $$($(1)_RES) $$($(1)_DEF) $$($(1)_EXTRADEPS)
 	$(if $(QUIET), @echo [LD] $$@)
 	$(QUIET)$(LD) $(LDFLAGS) $$($(1)_LDFLAGS) -o $$@ $$($(1)_OBJS) $$($(1)_DEF) $(LDLIBS) $$($(1)_LDLIBS)
@@ -90,6 +104,8 @@ ifneq ($(strip $(NO_COMPRESS_RES)),)
 	$(QUIET)$(RC) $$($(1)_RES) $$@
 endif
 endif
+	$(if $(QUIET), @echo [BLDLEVEL] $$@)
+	$(QUIET)echo $(BLDLEVEL)$$($(1)_DESC) >> $$@
 
 $(1) : $(1)$(EXE_EXT)
 endef
@@ -133,6 +149,8 @@ $(1)_DLL_TARGET := $(if $($(1)_DLLNAME),$($(1)_DLLNAME),$(1))$(DLL_EXT)
 
 $(1)_DLL_LIBNAME := $$(notdir $$(basename $$($(1)_DLL_TARGET)))
 
+$(1)_DESC := $(if $($(1)_DESC),$($(1)_DESC),$(1))
+
 ifneq ($$(wildcard $(1)_auto.def),)
 ifneq ($$(shell sed -n -e "1s/^LIBRARY[ \t]\+\([^ \t]\+\).*$$$$/\1/p" $$($(1)_DEF)),$$($(1)_DLL_LIBNAME))
 $$(shell touch $(1)_auto.libname)
@@ -169,6 +187,8 @@ ifneq ($(strip $(NO_COMPRESS_RES)),)
 	$(QUIET)$(RC) $$($(1)_RES) $$@
 endif
 endif
+	$(if $(QUIET), @echo [BLDLEVEL] $$@)
+	$(QUIET)echo $(BLDLEVEL)$$($(1)_DESC) >> $$@
 
 $(1)_dll$(LIB_EXT) : $$($(1)_DLL_TARGET)
 	$(if $(QUIET), @echo [IMPLIB] $$@)
