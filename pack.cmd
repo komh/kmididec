@@ -28,7 +28,7 @@ sDistFiles = 'kmidi.exe' '/',
 sCmd = 'sed -n "s/^#define' sVerMacro '*\\\"\(.*\)\\\"$/\1/p"' sVerHeader
 sVer = getOutput( sCmd )
 sShortVer = removeNonNumbers( sVer )
-sPackageNameVer = sPackageName || sShortVer
+sPackageNameVer = sPackageName || '-' || sVer
 
 'gmake' 'clean'
 'gmake' 'RELEASE=1'
@@ -49,7 +49,8 @@ do while strip( sDistFiles ) \= ''
     'ginstall' sRepoDir || '/' || sSrc sPackageNameVer || sDestDir
 end
 
-'git' 'archive' '--format' 'zip' sVer '>' sPackageNameVer || '/src.zip'
+'git' 'archive' '--format' 'zip' sVer '--prefix' sPackageNameVer || '/' '>',
+      sPackageNameVer || '/' || sPackageNameVer || '-src.zip'
 
 'rm' '-f' sPackageNameVer || '.zip'
 'zip' '-rpSm' sPackageNameVer || '.zip' sPackageNameVer

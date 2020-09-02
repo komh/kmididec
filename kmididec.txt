@@ -1,7 +1,7 @@
                           Upload Information Template for Hobbes.nmsu.edu
                           ===============================================
 
-        Archive Filename: kmididec@SHORT_VER@.zip
+        Archive Filename: kmididec-@VER@.zip
        Short Description: kmididec v@VER@
         Long Description: kmididec v@VER@
 K MIDI DECoder(kmididec) is a library in order to decode MIDI to PCM using
