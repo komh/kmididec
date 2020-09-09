@@ -67,7 +67,7 @@ typedef struct kmtrk
 /* defaul values */
 #define DEFAULT_TEMPO       500000 /* us/qn */
 #define DEFAULT_NUMERATOR   4
-#define DEFAULT_DENOMIRATOR 4
+#define DEFAULT_DENOMINATOR 4
 
 /* clocks per sec */
 #define CLOCK_BASE  INT64_C( 1000000 ) /* us */
@@ -99,7 +99,7 @@ typedef struct kmdec
 
     uint32_t tempo;         /**< tempo in us/qn */
     uint8_t numerator;      /**< numerator */
-    uint8_t denomirator;    /**< denomirator */
+    uint8_t denominator;    /**< denominator */
 
     uint32_t tick;      /**< current tick */
     uint64_t clock;     /**< current clock in us */
@@ -214,7 +214,7 @@ static int reset( PKMDEC dec )
     /* reset to default values */
     dec->tempo = DEFAULT_TEMPO;
     dec->numerator = DEFAULT_NUMERATOR;
-    dec->denomirator = DEFAULT_DENOMIRATOR;
+    dec->denominator = DEFAULT_DENOMINATOR;
 
     dec->tick = 0;
     dec->clock = 0;
@@ -347,7 +347,7 @@ static int decodeMetaEvent( PKMTRK track )
             break;
         }
 
-        case 0x54: /* SMTPE offset */
+        case 0x54: /* SMPTE offset */
             if( len != 5 )
                 return -1;
             break;
@@ -360,7 +360,7 @@ static int decodeMetaEvent( PKMTRK track )
             PKMDEC dec = track->dec;
 
             dec->numerator = data[ 0 ];
-            dec->denomirator = 1 << data[ 1 ]; /* power of 2 */
+            dec->denominator = 1 << data[ 1 ]; /* power of 2 */
             break;
         }
 
@@ -702,7 +702,7 @@ PKMDEC openEx( int fd, const char *sf2name, PKMDECAUDIOINFO pkai,
 
     dec->tempo = DEFAULT_TEMPO;
     dec->numerator = DEFAULT_NUMERATOR;
-    dec->denomirator = DEFAULT_DENOMIRATOR;
+    dec->denominator = DEFAULT_DENOMINATOR;
 
     /* calculate total samples */
     while( decode( dec, DECODE_SEEK ) != -1 )
