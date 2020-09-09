@@ -539,6 +539,14 @@ static int decode( PKMDEC dec, int mode )
         int ticksPerSec = dec->header.division * CLOCK_BASE / dec->tempo;
         int delta = ticksPerSec * dec->clockUnit / CLOCK_BASE;
 
+        /*
+         * delta should be 1 at least. Otherwise tick does not progress
+         * any more until tempo is changed to set delta to a value bigger
+         * than 0.
+         */
+        if( delta == 0 )
+            delta = 1;
+
         if( dec->tick + delta > nextTick )
             delta = nextTick - dec->tick;
 
