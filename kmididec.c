@@ -558,6 +558,12 @@ static int decode( PKMDEC dec, int mode )
             delta = nextTick - dec->tick;
 
         int samples = delta * dec->sampleRate / ticksPerSec;
+        int len = samples * dec->sampleSize;
+
+        free( dec->buffer );
+        dec->buffer = malloc( len );
+        if( !dec->buffer )
+            return -1;
 
         if( samples > 0 && mode == DECODE_PLAY )
         {
@@ -565,7 +571,7 @@ static int decode( PKMDEC dec, int mode )
                               dec->buffer, 0, 2, dec->buffer, 1, 2 );
         }
 
-        dec->bufLen = samples * dec->sampleSize;
+        dec->bufLen = len;
         dec->bufPos = 0;
 
         /* accumulate ticks */
@@ -694,11 +700,6 @@ PKMDEC openEx( int fd, const char *sf2name, PKMDECAUDIOINFO pkai,
 
     dec->sampleRate = pkai->sampleRate;
     dec->sampleSize = pkai->channels * ( pkai->bps >> 3 );
-    dec->buffer = calloc( 1, dec->sampleRate * dec->clockUnit / CLOCK_BASE *
-                             dec->sampleSize +
-                             dec->sampleSize /* remainder + margin */);
-    if( !dec->buffer )
-        goto fail;
 
     dec->tempo = DEFAULT_TEMPO;
     dec->numerator = DEFAULT_NUMERATOR;
