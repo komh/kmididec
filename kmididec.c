@@ -150,6 +150,13 @@ static int initMidiInfo( PKMDEC dec )
     header->tracks = ntohs( *( uint16_t * )( data + 10 ));
     header->division = ntohs( *( uint16_t * )( data + 12 ));
 
+    if( header->format >= 2 )
+    {
+        fprintf( stderr, "Not supported MIDI format\n");
+
+        return -1;
+    }
+
     if(( header->division >> 15 ) & 1)
     {
         fprintf( stderr, "Not supported time format\n");
