@@ -14,7 +14,7 @@ kmididec has the following features:
 kmididec does NOT support the following features:
 
   * decoding of SMF2 midi file
-  * division in SMTPE format
+  * division in SMPTE format
   * midi chunk in RIFF file
 
 K MIDI and K MIDI MMIO
