@@ -33,6 +33,10 @@ kmidimmio is the same as kmidi, but it is a version using MMIO.
 History
 -------
 
+  * v0.2.1 ( 2020/09/13 )
+    - Fixed: Fall into infinite-loop when playing some midi files. Issue #6.
+    - Improved: Rejct unsupported time format and MIDI format
+
   * v0.2.0 ( 2020/09/02 )
     - Added: Decode in float audio samples
     - Added: Allow user-supplied-IO functions
