@@ -23,7 +23,7 @@ CFLAGS := -Wall -std=gnu99
 CXXFLAGS :=
 
 # specify linker flags such as -L option for all the programs
-LDFLAGS :=
+LDFLAGS := -Zhigh-mem
 
 # specify dependent libraries such as -l option for all the programs
 LDLIBS :=
