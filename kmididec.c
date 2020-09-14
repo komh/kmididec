@@ -564,22 +564,22 @@ static int decode( PKMDEC dec, int mode )
         if( dec->tick + delta > nextTick )
             delta = nextTick - dec->tick;
 
-        int samples = delta * dec->sampleRate / ticksPerSec;
-        int len = samples * dec->sampleSize;
-
-        free( dec->buffer );
-        dec->buffer = malloc( len );
-        if( !dec->buffer )
-            return -1;
-
-        if( samples > 0 && mode == DECODE_PLAY )
+        if( mode == DECODE_PLAY )
         {
+            int samples = delta * dec->sampleRate / ticksPerSec;
+            int len = samples * dec->sampleSize;
+
+            free( dec->buffer );
+            dec->buffer = malloc( len );
+            if( !dec->buffer )
+                return -1;
+
             dec->synth_write( dec->synth, samples,
                               dec->buffer, 0, 2, dec->buffer, 1, 2 );
-        }
 
-        dec->bufLen = len;
-        dec->bufPos = 0;
+            dec->bufLen = len;
+            dec->bufPos = 0;
+        }
 
         /* accumulate ticks */
         dec->tick += delta;
