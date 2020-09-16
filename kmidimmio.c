@@ -86,7 +86,7 @@ static int ioOpen( const char *name )
     HMMIO hmmio;
 
     memset( &info, 0, sizeof( info ));
-    info.ulTranslate = MMIO_TRANSLATEHEADER;
+    info.ulTranslate = MMIO_TRANSLATEHEADER | MMIO_TRANSLATEDATA;
 
     hmmio = mmioOpen(( PSZ )name, &info, 0 );
 

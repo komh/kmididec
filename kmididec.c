@@ -38,6 +38,9 @@ int fluid_synth_channel_pressure( fluid_synth_t *synth, int chan, int val );
 
 #include "kmididec.h"
 
+/* OS/2 real-time midi format */
+#define OS2MIDI 0xFFFF
+
 /**
  * Header information
  */
@@ -121,6 +124,8 @@ static int readVarQ( PKMTRK track, int *val );
 static int decodeDelta( PKMTRK track);
 static int decodeMetaEvent( PKMTRK track);
 static int decodeEvent( PKMTRK track);
+static int decodeOS2SysExEvent( PKMTRK track );
+static int decodeOS2Event( PKMTRK track );
 static int decode( PKMDEC dec, int mode );
 
 /**
@@ -136,7 +141,46 @@ static int initMidiInfo( PKMDEC dec )
     PKMTRK *tracks = &dec->tracks;
     uint8_t data[ 14 ];
 
-    if( dec->io->read( fd, data, sizeof( data )) == -1 )
+    if( dec->io->read( fd, data, 10 ) == -1 )
+        return -1;
+
+    /* Timing Generation Control of OS/2 real-time midi data ? */
+    if( memcmp( data, "\xF0\x00\x00\x3A\x03\x01\x18", 7 ) == 0
+        && data[ 9 ] == 0xF7 )
+    {
+        header->format = OS2MIDI;
+        header->tracks = 1;
+
+        uint8_t pp = data[ 7 ] & 0x7F;
+        if( pp & 0x40 )
+            header->division = 24 / ((( pp & 0x3F ) + 1 ) * 3 );
+        else
+            header->division = 24 * ( pp + 1 );
+
+        /*
+         * PPQN below 1 is not supported. If there are real cases, consider
+         * then.
+         */
+        if( header->division == 0 )
+        {
+            fprintf( stderr, "Not supported time format\n");
+            return -1;
+        }
+
+        PKMTRK track = calloc( 1, sizeof( *track ));
+        if( !track )
+            return -1;
+
+        track->dec = dec;
+        track->start = -1;
+        track->length = -1;
+
+        *tracks = track;
+
+        return 0;
+    }
+
+    if( dec->io->read( fd, data + 10, 4 ) == -1 )
         return -1;
 
     if( memcmp( data, "MThd\x00\x00\x00\x06", 8 ) != 0 )
@@ -518,6 +562,179 @@ static int decodeEvent( PKMTRK track )
 }
 
 /**
+ * Decode OS/2 SysEx event
+ *
+ * @param[in] track Pointer to a track
+ * @return 0 on success, -1 on error
+ */
+static int decodeOS2SysExEvent( PKMTRK track )
+{
+    int fd = track->dec->fd;
+    uint8_t sysex[ 10 - 1 ]; /* F0 was consumed already */
+    int i;
+
+    /* SysEx event ends with 0xF7 */
+    for( i = 0; i < sizeof( sysex ); i++ )
+    {
+        if( track->dec->io->read( fd, sysex + i, 1 ) != 1 )
+            return -1;
+
+        track->offset++;
+
+        if( sysex[ i ] == 0xF7 )
+            break;
+    }
+
+    /* Ignore not supported SysEx event */
+    if( i == sizeof( sysex ))
+    {
+        do
+        {
+            if( track->dec->io->read( fd, sysex, 1 ) != 1 )
+                return -1;
+
+            track->offset++;
+        } while( sysex[ 0 ] != 0xF7 );
+    }
+    else if( memcmp( sysex, "\x00\x00\x3A", 3 ) == 0 )
+    {
+        uint8_t type = sysex[ 3 ] & 0x7F;
+
+        if( type == 1 )         /* Timing Compression(Long) */
+        {
+            uint8_t ll = sysex[ 4 ] & 0x7F;
+            uint8_t mm = sysex[ 5 ] & 0x7F;
+
+            track->nextTick += mm << 7 | ll;
+        }
+        else if( type >= 7 )    /* Timing Compression(Short) */
+            track->nextTick += type;
+        else if( type == 3 )    /* Device Driver Control */
+        {
+            uint8_t cmd = sysex[ 4 ];
+
+            if( cmd == 2 )      /* Tempo Control */
+            {
+                uint8_t tl = sysex[ 5 ] & 0x7F;
+                uint8_t tm = sysex[ 6 ] & 0x7F;
+
+                track->dec->tempo = 60 * 1000000 / (( tm << 7 | tl ) / 10 );
+            }
+        }
+    }
+
+    return 0;
+}
+
+/**
+ * Decode OS/2 event
+ *
+ * @param[in] track Pointer to a track
+ * @return 0 on success, -1 on error
+ */
+static int decodeOS2Event( PKMTRK track )
+{
+    int fd = track->dec->fd;
+    fluid_synth_t *synth = track->dec->synth;
+
+    uint8_t status;
+    uint8_t event;
+    uint8_t channel;
+    uint8_t data[ 2 ];
+
+    if( track->dec->io->read( fd, &status, 1 ) != 1 )
+        return -1;
+    track->offset++;
+
+    data[ 0 ] = 0;
+
+    /* implicit status ? */
+    if( status < 0x80 )
+    {
+        data[ 0 ] = status;
+        status = track->status;
+    }
+
+    if( status < 0x80 )
+        return -1;
+
+    if( status < 0xF0 )
+        track->status = status;
+
+    event   = status & 0xF0;
+    channel = status & 0x0F;
+
+    /* calculate length of event data */
+    int ofs = data[ 0 ] ? 1 : 0;
+    int len = 0;
+
+    /*
+     * status event 0x80, 0x90, 0xA0, 0xB0, 0xE0: len = 2
+     * status event 0xC0, 0xD0: len = 1
+     */
+    switch( event )
+    {
+        case 0x80: case 0x90: case 0xA0: case 0xB0: case 0xE0:
+            len = 2 - ofs;
+            break;
+
+        case 0xC0: case 0xD0:
+            len = 1 - ofs;
+            break;
+    }
+
+    if( event < 0xF0 && len > 0
+        && track->dec->io->read( fd, data + ofs, len )  != len )
+        return -1;
+    track->offset += len;
+
+    data[ 0 ] &= 0x7F;
+    data[ 1 ] &= 0x7F;
+
+    /* pass MIDI event to fluidsynth */
+    switch( event )
+    {
+        case 0x80:  /* note off */
+            fluid_synth_noteoff( synth, channel, data[ 0 ]);
+            break;
+
+        case 0x90:  /* note on */
+            fluid_synth_noteon( synth, channel, data[ 0 ], data[ 1 ]);
+            break;
+
+        case 0xA0: /* polyphonic aftertouch */
+            /* not supported */
+            break;
+
+        case 0xB0:  /* control mode hnage */
+            fluid_synth_cc( synth, channel, data[ 0 ], data[ 1 ]);
+            break;
+
+        case 0xC0:  /* program change */
+            fluid_synth_program_change( synth, channel, data[ 0 ]);
+            break;
+
+        case 0xD0:  /* channel key pressure */
+            fluid_synth_channel_pressure( synth, channel, data[ 0 ]);
+            break;
+
+        case 0xE0: /* pitch bend */
+            fluid_synth_pitch_bend( synth, channel,
+                                    ( data[ 1 ] << 7) | data[ 0 ]);
+            break;
+
+        case 0xF0:
+            if( status == 0xF8 )
+                track->nextTick++;
+            else
+                return decodeOS2SysExEvent( track );
+            break;
+    }
+
+    return 0;
+}
+
+/**
  * Decode MIDI messages
  *
  * @param[in] track Pointer to a track
@@ -535,7 +752,12 @@ static int decode( PKMDEC dec, int mode )
 
         if( track->nextTick <= dec->tick )
         {
-            if( decodeEvent( track ) == -1 )
+            if( track->dec->header.format == OS2MIDI )
+            {
+                if( decodeOS2Event( track ) == -1 )
+                    return -1;
+            }
+            else if( decodeEvent( track ) == -1 )
                 return -1;
         }
 
@@ -712,15 +934,18 @@ PKMDEC openEx( int fd, const char *sf2name, PKMDECAUDIOINFO pkai,
     dec->numerator = DEFAULT_NUMERATOR;
     dec->denominator = DEFAULT_DENOMINATOR;
 
-    /* calculate total samples */
-    while( decode( dec, DECODE_SEEK ) != -1 )
-        /* nothing */;
+    if( dec->header.format != OS2MIDI )
+    {
+        /* calculate total samples */
+        while( decode( dec, DECODE_SEEK ) != -1 )
+            /* nothing */;
 
-    dec->duration = dec->clock;
+        dec->duration = dec->clock;
 
-    /* reset decoder to intial status */
-    if( reset( dec ) == -1 )
-        goto fail;
+        /* reset decoder to intial status */
+        if( reset( dec ) == -1 )
+            goto fail;
+    }
 
     return dec;
 
