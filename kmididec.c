@@ -165,7 +165,7 @@ static int initMidiInfo( PKMDEC dec )
     }
 
     *tracks = calloc( header->tracks, sizeof( **tracks ));
-    if( !tracks )
+    if( !*tracks )
         return -1;
 
     for( int i = 0; i < header->tracks; i++ )
