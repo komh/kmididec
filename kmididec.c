@@ -67,6 +67,17 @@ typedef struct kmtrk
     uint8_t status;     /**< status byte */
 } KMTRK, *PKMTRK;
 
+/**
+ * Memory FD
+ */
+typedef struct kmemfd
+{
+    uint8_t *buffer;    /**< buffer for a file */
+    uint32_t size;      /**< size of a buffer @a buffer in bytes */
+    uint32_t length;    /**< bytes filled in a buffer @a buffer */
+    uint32_t offset;    /**< current position */
+} KMEMFD, *PKMEMFD;
+
 /* defaul values */
 #define DEFAULT_TEMPO       500000 /* us/qn */
 #define DEFAULT_NUMERATOR   4
@@ -83,6 +94,7 @@ typedef struct kmdec
     int fd;             /**< fd for MIDI file */
     bool closeFd;       /**< flag to indicate to close fd */
     PKMDECIOFUNCS io;   /**< IO functions */
+    PKMEMFD mfd;        /**< fd for memory IO */
 
     KMTHD header;   /**< header */
     PKMTRK tracks;  /**< array of a track */
@@ -117,6 +129,12 @@ typedef struct kmdec
 #define DECODE_SEEK    0    /* seek mode */
 #define DECODE_PLAY    1    /* play mode */
 
+static PKMEMFD memOpen( int fd, PKMDECIOFUNCS io );
+static int memClose( PKMEMFD mfd );
+static int memRead( PKMEMFD mfd, void *buf, size_t n );
+static int memSeek( PKMEMFD mfd, long offset, int origin );
+static int memTell( PKMEMFD mfd );
+
 static int initMidiInfo( PKMDEC dec );
 static int reset( PKMDEC dec );
 
@@ -128,6 +146,121 @@ static int decodeOS2SysExEvent( PKMTRK track );
 static int decodeOS2Event( PKMTRK track );
 static int decode( PKMDEC dec, int mode );
 
+#define MEMFD_BUF_DELTA ( 64 * 1024 )
+
+static PKMEMFD memOpen( int fd, PKMDECIOFUNCS io )
+{
+    PKMEMFD mfd;
+    uint8_t *buffer;
+
+    mfd = calloc( 1, sizeof( *mfd ));
+    if( !mfd )
+        return NULL;
+
+    while( 1 )
+    {
+        if( mfd->length == mfd->size )
+        {
+            mfd->size += MEMFD_BUF_DELTA;
+
+            buffer = realloc( mfd->buffer, mfd->size );
+            if( !buffer )
+            {
+fail:
+                free( mfd->buffer );
+                free( mfd );
+            }
+
+            mfd->buffer = buffer;
+        }
+
+        int size = MEMFD_BUF_DELTA - ( mfd->length % MEMFD_BUF_DELTA );
+        int len = io->read( fd, mfd->buffer + mfd->length, size );
+
+        if( len == -1 )
+            goto fail;
+
+        if( len == 0 )
+            break;
+
+        mfd->length += len;
+    }
+
+    /* shrink to fit */
+    buffer = realloc( mfd->buffer, mfd->length );
+    if( !buffer )
+        goto fail;
+
+    mfd->buffer = buffer;
+
+    return mfd;
+}
+
+static int memClose( PKMEMFD mfd )
+{
+    if( !mfd )
+        return -1;
+
+    free( mfd->buffer );
+    free( mfd );
+
+    return 0;
+}
+
+static int memRead( PKMEMFD mfd, void *buf, size_t n )
+{
+    if( !mfd )
+        return -1;
+
+    if( n == 0 || mfd->length == mfd->offset )
+        return 0;
+
+    int len = MIN( n, mfd->length - mfd->offset );
+
+    memcpy( buf, mfd->buffer + mfd->offset, len );
+    mfd->offset += len;
+
+    return len;
+}
+
+static int memSeek( PKMEMFD mfd, long offset, int origin )
+{
+    long pos;
+
+    if( !mfd )
+        return -1;
+
+    switch( origin )
+    {
+        case SEEK_SET:
+            pos = offset;
+            break;
+
+        case SEEK_CUR:
+            pos = mfd->offset + offset;
+            break;
+
+        case SEEK_END:
+            pos = mfd->length + offset;
+            break;
+    }
+
+    if( pos < 0 || pos > mfd->length )
+        return -1;
+
+    mfd->offset = pos;
+
+    return pos;
+}
+
+static int memTell( PKMEMFD mfd )
+{
+    if( !mfd )
+        return -1;
+
+    return mfd->offset;
+}
+
 /**
  * Initialize header and track information
  *
@@ -136,12 +269,12 @@ static int decode( PKMDEC dec, int mode );
  */
 static int initMidiInfo( PKMDEC dec )
 {
-    int fd = dec->fd;
+    PKMEMFD mfd = dec->mfd;
     PKMTHD header = &dec->header;
     PKMTRK *tracks = &dec->tracks;
     uint8_t data[ 14 ];
 
-    if( dec->io->read( fd, data, 10 ) == -1 )
+    if( memRead( mfd, data, 10 ) == -1 )
         return -1;
 
     /* Timing Generation Control of OS/2 real-time midi data ? */
@@ -172,15 +305,23 @@ static int initMidiInfo( PKMDEC dec )
             return -1;
 
         track->dec = dec;
-        track->start = -1;
-        track->length = -1;
+        track->start = memTell( mfd );
+
+        if( memSeek( mfd, 0, SEEK_END ) == -1
+            || ( track->length = memTell( mfd ) - track->start,
+                memSeek( mfd, track->start, SEEK_SET ) == -1 ))
+        {
+            free( track );
+
+            return -1;
+        }
 
         *tracks = track;
 
         return 0;
     }
 
-    if( dec->io->read( fd, data + 10, 4 ) == -1 )
+    if( memRead( mfd, data + 10, 4 ) == -1 )
         return -1;
 
     if( memcmp( data, "MThd\x00\x00\x00\x06", 8 ) != 0 )
@@ -215,7 +356,7 @@ static int initMidiInfo( PKMDEC dec )
     for( int i = 0; i < header->tracks; i++ )
     {
         PKMTRK track = ( *tracks ) + i;
-        if( dec->io->read( fd, data, 8 ) == -1
+        if( memRead( mfd, data, 8 ) == -1
             || memcmp( data, "MTrk", 4 ) != 0 )
         {
 fail:
@@ -226,12 +367,12 @@ fail:
         }
 
         track->dec = dec;
-        track->start = dec->io->tell( fd );
+        track->start = memTell( mfd );
         track->length = ntohl( *( long * )( data + 4 ));
         if( decodeDelta( track ) == -1 )
             goto fail;
 
-        if( dec->io->seek( fd, track->start + track->length, SEEK_SET ) == -1 )
+        if( memSeek( mfd, track->start + track->length, SEEK_SET ) == -1 )
             goto fail;
     }
 
@@ -253,9 +394,13 @@ static int reset( PKMDEC dec )
 
         track->offset = 0;
         track->nextTick = 0;
-        if( dec->io->seek( dec->fd, track->start, SEEK_SET ) == -1 ||
-            decodeDelta( track ) == -1 )
+
+        if( memSeek( dec->mfd, track->start, SEEK_SET ) == -1 )
             return -1;
+
+        if( dec->header.format != OS2MIDI && decodeDelta( track ) == -1 )
+            return -1;
+
         track->status = 0;
     }
 
@@ -285,7 +430,7 @@ static int reset( PKMDEC dec )
  */
 static int readVarQ( PKMTRK track, int *val )
 {
-    int fd = track->dec->fd;
+    PKMEMFD mfd = track->dec->mfd;
     uint8_t b;
     int count = 0;
 
@@ -293,7 +438,7 @@ static int readVarQ( PKMTRK track, int *val )
 
     do
     {
-        if( count >= 4 || track->dec->io->read( fd, &b, 1 ) == -1 )
+        if( count >= 4 || memRead( mfd, &b, 1 ) == -1 )
             return -1;
         count++;
         track->offset++;
@@ -339,7 +484,7 @@ static int decodeDelta( PKMTRK track )
  */
 static int decodeMetaEvent( PKMTRK track )
 {
-    int fd = track->dec->fd;
+    PKMEMFD mfd = track->dec->mfd;
     uint8_t type;
     int len;
 
@@ -347,7 +492,7 @@ static int decodeMetaEvent( PKMTRK track )
         return 0;
 
     /* type */
-    if( track->dec->io->read( fd, &type, 1 ) == -1 )
+    if( memRead( mfd, &type, 1 ) == -1 )
         return -1;
     track->offset++;
 
@@ -358,7 +503,7 @@ static int decodeMetaEvent( PKMTRK track )
     uint8_t data[ len + 1 ];
     data[ len ] = '\0';
 
-    if( track->dec->io->read( fd, data, len ) == -1 )
+    if( memRead( mfd, data, len ) == -1 )
         return -1;
     track->offset += len;
 
@@ -443,7 +588,7 @@ static int decodeMetaEvent( PKMTRK track )
  */
 static int decodeEvent( PKMTRK track )
 {
-    int fd = track->dec->fd;
+    PKMEMFD mfd = track->dec->mfd;
     fluid_synth_t *synth = track->dec->synth;
 
     uint8_t status;
@@ -454,11 +599,10 @@ static int decodeEvent( PKMTRK track )
     if( track->offset >= track->length )
         return 0;
 
-    if( track->dec->io->seek( fd, track->start + track->offset,
-                              SEEK_SET ) == -1 )
+    if( memSeek( mfd, track->start + track->offset, SEEK_SET ) == -1 )
         return -1;
 
-    if( track->dec->io->read( fd, &status, 1 ) == -1 )
+    if( memRead( mfd, &status, 1 ) == -1 )
         return -1;
     track->offset++;
 
@@ -466,7 +610,7 @@ static int decodeEvent( PKMTRK track )
     if( status < 0x80 )
     {
         status = track->status;
-        if( track->dec->io->seek( fd, -1, KMDEC_SEEK_CUR ) == -1 )
+        if( memSeek( mfd, -1, KMDEC_SEEK_CUR ) == -1 )
             return -1;
         track->offset--;
     }
@@ -510,7 +654,7 @@ static int decodeEvent( PKMTRK track )
 
     uint8_t data[ len ];
 
-    if( track->dec->io->read( fd, data, len ) == -1 )
+    if( memRead( mfd, data, len ) == -1 )
         return -1;
     track->offset += len;
 
@@ -569,14 +713,14 @@ static int decodeEvent( PKMTRK track )
  */
 static int decodeOS2SysExEvent( PKMTRK track )
 {
-    int fd = track->dec->fd;
+    PKMEMFD mfd = track->dec->mfd;
     uint8_t sysex[ 10 - 1 ]; /* F0 was consumed already */
     int i;
 
     /* SysEx event ends with 0xF7 */
     for( i = 0; i < sizeof( sysex ); i++ )
     {
-        if( track->dec->io->read( fd, sysex + i, 1 ) != 1 )
+        if( memRead( mfd, sysex + i, 1 ) == -1)
             return -1;
 
         track->offset++;
@@ -590,7 +734,7 @@ static int decodeOS2SysExEvent( PKMTRK track )
     {
         do
         {
-            if( track->dec->io->read( fd, sysex, 1 ) != 1 )
+            if( memRead( mfd, sysex, 1 ) == -1 )
                 return -1;
 
             track->offset++;
@@ -634,25 +778,31 @@ static int decodeOS2SysExEvent( PKMTRK track )
  */
 static int decodeOS2Event( PKMTRK track )
 {
-    int fd = track->dec->fd;
+    PKMEMFD mfd = track->dec->mfd;
     fluid_synth_t *synth = track->dec->synth;
 
     uint8_t status;
     uint8_t event;
     uint8_t channel;
-    uint8_t data[ 2 ];
 
-    if( track->dec->io->read( fd, &status, 1 ) != 1 )
+    if( track->offset >= track->length )
+    {
+        track->nextTick = END_OF_TRACK;
+
+        return 0;
+    }
+
+    if( memRead( mfd, &status, 1 ) == -1 )
         return -1;
     track->offset++;
-
-    data[ 0 ] = 0;
 
     /* implicit status ? */
     if( status < 0x80 )
     {
-        data[ 0 ] = status;
         status = track->status;
+        if( memSeek( mfd, -1, KMDEC_SEEK_CUR ) == -1 )
+            return -1;
+        track->offset--;
     }
 
     if( status < 0x80 )
@@ -665,7 +815,6 @@ static int decodeOS2Event( PKMTRK track )
     channel = status & 0x0F;
 
     /* calculate length of event data */
-    int ofs = data[ 0 ] ? 1 : 0;
     int len = 0;
 
     /*
@@ -675,16 +824,17 @@ static int decodeOS2Event( PKMTRK track )
     switch( event )
     {
         case 0x80: case 0x90: case 0xA0: case 0xB0: case 0xE0:
-            len = 2 - ofs;
+            len = 2;
             break;
 
         case 0xC0: case 0xD0:
-            len = 1 - ofs;
+            len = 1;
             break;
     }
 
-    if( event < 0xF0 && len > 0
-        && track->dec->io->read( fd, data + ofs, len )  != len )
+    uint8_t data[ len ];
+
+    if( memRead( mfd, data, len ) == -1 )
         return -1;
     track->offset += len;
 
@@ -884,6 +1034,10 @@ PKMDEC openEx( int fd, const char *sf2name, PKMDECAUDIOINFO pkai,
 
     dec->io = io;
 
+    dec->mfd = memOpen( fd, io );
+    if( !dec->mfd )
+        goto fail;
+
     if( initMidiInfo( dec ) == -1 )
         goto fail;
 
@@ -934,18 +1088,15 @@ PKMDEC openEx( int fd, const char *sf2name, PKMDECAUDIOINFO pkai,
     dec->numerator = DEFAULT_NUMERATOR;
     dec->denominator = DEFAULT_DENOMINATOR;
 
-    if( dec->header.format != OS2MIDI )
-    {
-        /* calculate total samples */
-        while( decode( dec, DECODE_SEEK ) != -1 )
-            /* nothing */;
+    /* calculate total samples */
+    while( decode( dec, DECODE_SEEK ) != -1 )
+        /* nothing */;
 
-        dec->duration = dec->clock;
+    dec->duration = dec->clock;
 
-        /* reset decoder to intial status */
-        if( reset( dec ) == -1 )
-            goto fail;
-    }
+    /* reset decoder to intial status */
+    if( reset( dec ) == -1 )
+        goto fail;
 
     return dec;
 
@@ -1040,6 +1191,9 @@ void kmdecClose( PKMDEC dec )
     delete_fluid_settings( dec->settings );
 
     free( dec->tracks );
+
+    memClose( dec->mfd );
+
     if( dec->closeFd )
         dec->io->close( dec->fd );
 
