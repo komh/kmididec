@@ -33,6 +33,11 @@ kmidimmio is the same as kmidi, but it is a version using MMIO.
 History
 -------
 
+  * v0.3.0 ( 2020/09/18 )
+    - Added: Support of OS/2 real-time MIDI data translated by
+             MMIO_TRANSLATEDATA
+    - Fixed: A very large SF2 file cannot be loaded
+
   * v0.2.1 ( 2020/09/13 )
     - Fixed: Fall into infinite-loop when playing some midi files. Issue #6.
     - Improved: Rejct unsupported time format and MIDI format
