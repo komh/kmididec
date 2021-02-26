@@ -169,6 +169,8 @@ static PKMEMFD memOpen( int fd, PKMDECIOFUNCS io )
 fail:
                 free( mfd->buffer );
                 free( mfd );
+
+                return NULL;
             }
 
             mfd->buffer = buffer;
