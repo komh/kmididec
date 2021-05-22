@@ -33,6 +33,9 @@ kmidimmio is the same as kmidi, but it is a version using MMIO.
 History
 -------
 
+  * v0.3.1 ( 2021/05/22 )
+    - Fixed: memOpen() does not return NULL on failure
+
   * v0.3.0 ( 2020/09/18 )
     - Added: Support of OS/2 real-time MIDI data translated by
              MMIO_TRANSLATEDATA
