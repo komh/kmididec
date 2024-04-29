@@ -1008,6 +1008,7 @@ static int defaultClose( int fd )
  * @param[in] io IO functions to use
  * @return Decoder on success, NULL on error
  */
+static
 PKMDEC openEx( int fd, const char *sf2name, PKMDECAUDIOINFO pkai,
                bool closeFd, PKMDECIOFUNCS io)
 {
